@@ -1,0 +1,2 @@
+get /rooms
+post /users
