@@ -1,33 +1,78 @@
-body,
-html {
-  padding: 5px;
-  margin: 0px;
+.frrc {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  align-content: stretch;
+}
 
+.frlc {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: center;
+  align-content: stretch;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 #root {
+
+
   display: grid;
-  grid-template-columns: 200px 1fr;
-  grid-template-rows: 200px 1fr 50px 200px;
+  grid-template-columns: 200px 1fr 200px;
+  grid-template-rows: 50px 200px 1fr 50px 200px;
   grid-auto-columns: 1fr;
-  /* grid-auto-rows: 1fr 1fr 1fr; */
+
   gap: 5px 5px;
   grid-auto-flow: row;
   grid-template-areas:
-    "rooms rooms"
-    "messages messages"
-    "user-name user-name-input"
-    "message-label message-input";
-  width: 100%;
-  height: 100%;
+    "create-room-input rooms rooms"
+    "create-room-button rooms rooms"
+    "messages messages messages"
+    "user-name user-name-input user-name-input"
+    "message-label message-input message-send";
+  min-height: 100vh;
+  /* box-sizing: border-box; */
 }
 
 #root>div {
-  background-color: blueviolet;
+  background-color: rgb(238, 220, 255);
+  padding: 5px;
+  /* box-sizing: border-box; */
+
+}
+
+.message-send {
+
+  grid-area: message-send;
+}
+
+.create-room-input {
+  grid-area: create-room-input;
+}
+
+.create-room-button {
+  grid-area: create-room-button;
 }
 
 .rooms {
   grid-area: rooms;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 4px;
 }
 
 .user-name {
@@ -48,4 +93,56 @@ html {
 
 .messages {
   grid-area: messages;
+}
+
+/* --------------------------------------------- */
+input,
+button,
+textarea {
+  width: 100%;
+  height: 100%;
+  outline: none;
+  box-sizing: border-box;
+  padding: 10px;
+}
+
+/* --------------------------------------------- */
+.room-card {
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0);
+  width: 200px;
+  border-radius: 5px;
+  /* margin: 5px; */
+  background-color: white;
+  display: flex;
+  justify-content: space-between;
+  /* Расталкивает элементы по краям */
+  align-items: center;
+}
+
+.selected {
+  background-color: greenyellow;
+}
+
+.room-card:hover {
+  border: 1px solid black;
+}
+
+.room-delete {
+  text-align: right;
+  color: rgba(0, 0, 0, 0.219)
+}
+
+.room-delete:hover {
+
+  color: rgb(255, 0, 0)
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td {
+  border: 1px solid red;
 }

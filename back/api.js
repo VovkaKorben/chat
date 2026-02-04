@@ -1,3 +1,5 @@
+import http from 'http';
+import { Server } from 'socket.io';
 import process from 'node:process';
 import dotenv from 'dotenv';
 import express from 'express';
@@ -5,21 +7,7 @@ import mongoose from "mongoose";
 import cors from 'cors';
 import { asyncHandler, notFound, errorHandler } from './middleware/error.js';
 dotenv.config({ quiet: true });
-
-
-/*dotenv debug
-const result = dotenv.config();
-if (result.error) console.error('❌ Dotenv error:', result.error);
-console.log('📦 Loaded vars:', result.parsed);
-*/
-
 const { API_PORT = 3000, MONGODB_URI } = process.env;
-// check if MongoDB address is available via .env
-if (!MONGODB_URI) {
-  console.error('❌ Check MONGODB_URI in .env');
-  process.exit(1);
-}
-
 
 const app = express(); // Перенесено вверх
 
@@ -28,22 +16,35 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" } // Разрешаем запросы с фронтенда
+});
+
+
+
+// check if MongoDB address is available via .env
+if (!MONGODB_URI) {
+  console.error('❌ Check MONGODB_URI in .env');
+  process.exit(1);
+}
+
+
+
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
     console.log("Ⓜ️  MongoDB connection established");
-
-    const server = app.listen(API_PORT, () => {
-      console.log(`💬 Chat API started on http://localhost:${API_PORT}`);
+    // Запускаем единый HTTP-сервер, который держит и Express, и Socket.io
+    server.listen(API_PORT, () => {
+      console.log(`🐝 Server & Socket.io running on port ${API_PORT}`);
       console.log(`💖 Health check with http://localhost:${API_PORT}/api/health`);
     });
-    server.timeout = 12000;
-  }).catch((err) => {
-    console.error("⛔  MongoDB connection error", err.message);
+  })
+  .catch((err) => {
+    console.error("⛔ MongoDB connection error", err.message);
     process.exit(1);
-
   });
-
 // MODELS -------------------------------------------------
 
 
@@ -53,139 +54,147 @@ const RoomsSchema = new mongoose.Schema({
     name: { type: String, default: 'Empty room' },
     lastUpdated: { type: Date, default: Date.now }
   }
+}, {
+  timestamps: true // Это автоматически добавит поля createdAt и updatedAt [cite: 140]
 });
 const RoomModel = mongoose.model("rooms", RoomsSchema);
 
-const UserSchema = new mongoose.Schema({
+const MessageSchema = new mongoose.Schema({
   values: {
-    name: { type: String, default: 'Empty room' },
+    roomId: { type: String, required: true }, // [добавь это] чтобы отличать сообщения разных комнат
+    user: { type: String, default: 'anonymous' },
+    message: { type: String, default: '' },
+    time: {
+      type: String,
+      default: () => new Date().toLocaleTimeString()
+    },
     lastUpdated: { type: Date, default: Date.now }
   }
 });
-const RoomModel = mongoose.model("rooms", RoomsSchema);
-/*
-const OutputSchema = new mongoose.Schema({
-  values: { type: [[Number]], required: true }, // 13 * количество реальных рядов
-  rowCount: { type: Number, required: true },    // количество реальных рядов
-  requestedRows: { type: Number, required: true }, // количество заданных рядов
-  createdAt: { type: Date, default: Date.now }
+const MessageModel = mongoose.model("message", MessageSchema);
+
+
+
+
+
+
+
+io.on('connection', (socket) => {
+  console.log('Пользователь подключился:', socket.id);
+
+  // Обработка входа в конкретную комнату [cite: 20, 146]
+  socket.on('join_room', (roomId) => {
+    socket.join(roomId);
+    console.log(`Юзер ${socket.id} вошел в комнату: ${roomId}`);
+  });
+
+  // Получение и рассылка сообщения 
+  socket.on('send_message', async (data) => {
+
+    // save message to DB  
+    const newMsg = new MessageModel({ values: data });
+    const savedMsg = await newMsg.save();
+
+    const flattenedMsg = {
+      id: savedMsg._id,
+      ...savedMsg.values.toObject()
+    };
+
+    io.to(data.roomId).emit('receive_message', flattenedMsg);   // Рассылаем всем в этой комнате, включая отправителя
+
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Пользователь отключился');
+  });
 });
 
-const OutputModel = mongoose.model("output", OutputSchema);
-*/
+
+
 // ROUTES -------------------------------------------------
 
 
 
-// INPUTS load
-app.get('/api/rooms', asyncHandler(async (req, res) => {
-
-  const data = await RoomModel.findOne();
-  res.json(data ? data.values : []);
-
-}));
-// INPUTS save
-app.post('/api/input', asyncHandler(async (req, res) => {
-  const updateData = {
-    values: req.body,
-    lastUpdated: new Date()
-  };
-  await InputModel.findOneAndUpdate({}, updateData, { upsert: true, new: true });
-  res.status(200).json({ message: "Успешно сохранено в Atlas" });
-}));
-
-
 app.get('/api/health', asyncHandler(async (req, res) => {
-
   res.status(200).json({ status: 'ok' });
-
 }));
 
-
-
-app.post('/api/output', asyncHandler(async (req, res) => {
-  const data = req.body;
-  const calculationResult = calculate(data);
-  const updateData = {
-    values: calculationResult,
-    rowCount: calculationResult.length,
-    requestedRows: data.rowCount,
-    createdAt: new Date()
-  };
-
-  // 3. Сохраняем единственный экземпляр (upsert)
-  const savedDoc = await OutputModel.findOneAndUpdate(
-    {},
-    updateData,
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
-
-  res.status(200).json(savedDoc);
-
-}));
-
-
-
-// OUTPUT load ---------------------------------------------------------------
-app.get('/api/output', asyncHandler(async (req, res) => {
-  const lastResult = await OutputModel.findOne().sort({ createdAt: -1 });
-  res.status(200).json(lastResult ? lastResult : null);
-}));
-// OUTPUT delete ---------------------------------------------------------------
-app.delete('/api/output', asyncHandler(async (req, res) => {
-  await OutputModel.deleteMany({});
-  res.status(200).json({ message: "Таблица результатов успешно очищена" });
-}));
-
-// TEAMS load/creation ---------------------------------------------------------------
-const generateAndSaveNewSet = async () => {
-  const teams = await Team.aggregate([
-    { $sample: { size: 26 } },
-    { $project: { _id: 1 } }
-  ]);
-  const rid = teams.map(t => t._id);
-
-  const newMatches = [];
-  for (let i = 0; i < rid.length; i += 2) {
-    newMatches.push([rid[i], rid[i + 1]]);
-  }
-
-  // 3. Сохраняем как единственный документ (upsert)
-  return await CurrentTeams.findOneAndUpdate(
-    {},
-    { matches: newMatches, updatedAt: new Date() },
-    { upsert: true, new: true }
-  );
-};
-const populateMatchesData = async (matches) => {
-  const allIds = matches.flat();
-  const teamsData = await Team.find({ _id: { $in: allIds } }).lean();
-
-  return matches.map(pair => {
-    return pair.map(id => {
-      const team = teamsData.find(t => t._id.toString() === id.toString());
-      // Возвращаем только имя строкой, либо заглушку, если команда не найдена
-      return team ? team.name : 'Unknown Team';
+// CREATE room
+app.post('/api/rooms', async (req, res) => {
+  try {
+    const roomData = {};
+    if (req.body.name && req.body.name.trim() !== "") {
+      roomData.name = req.body.name;
+    }
+    const newRoom = new RoomModel({
+      values: roomData
     });
-  });
-};
-app.get('/api/teams', asyncHandler(async (req, res) => {
-  let set = await CurrentTeams.findOne().lean();
 
-  // Если пусто — генерируем автоматически
-  if (!set) {
-    const newDoc = await generateAndSaveNewSet();
-    set = newDoc.toObject();
+    const savedRoom = await newRoom.save();
+    const resultData = {
+      id: savedRoom._id,      // Системный ID, который создала MongoDB 
+      name: savedRoom.values.name // Имя из вложенного объекта твоей схемы
+    }
+
+    res.status(201).json(resultData);
+  } catch (error) {
+    res.status(500).json({ message: "Ошибка при создании комнаты", error });
   }
+});
 
-  const populatedMatches = await populateMatchesData(set.matches);
-  res.json(populatedMatches);
-}));
-app.post('/api/teamsupdate', asyncHandler(async (req, res) => {
-  const set = await generateAndSaveNewSet();
-  const populatedMatches = await populateMatchesData(set.matches);
-  res.json(populatedMatches);
-}));
+// ROOMS List
+app.get('/api/rooms', async (req, res) => {
+  try {
+    const rooms = await RoomModel.find().select('values.name');
+    const formattedRooms = rooms.map(room => ({
+      id: room._id,
+      name: room.values.name
+    }));
+    res.json(formattedRooms);
+  } catch (error) {
+    res.status(500).json({ message: "Не удалось получить список комнат", error });
+  }
+});
+// DELETE room
+app.delete('/api/rooms', async (req, res) => {
+  try {
+    const { roomId } = req.body;
+    if (!roomId) {
+      return res.status(400).json({ message: "ID комнаты не указан" });
+    }
+    const deletedRoom = await RoomModel.findByIdAndDelete(roomId);
+    if (!deletedRoom) {
+      return res.status(404).json({ message: "Комната уже удалена или не существует" });
+    }
+    res.status(200).json({ message: "Комната успешно удалена", id: roomId });
+  } catch (error) {
+    res.status(500).json({ message: "Ошибка на сервере при удалении", error });
+  }
+});
+
+
+// MESSAGES
+app.get('/api/chat/:chatID', async (req, res) => {
+  try {
+    const { chatID } = req.params;
+
+    // Ищем сообщения по roomId
+    const messages = await MessageModel.find({ "values.roomId": chatID });
+
+    // Превращаем массив документов в массив плоских объектов
+    const flattenedMessages = messages.map(msg => {
+      const obj = msg.toObject();
+      return {
+        id: obj._id,
+        ...obj.values
+      };
+    });
+
+    res.json(flattenedMessages);
+  } catch (error) {
+    res.status(500).json({ message: "Ошибка загрузки чата", error });
+  }
+});
 
 app.use(notFound);
 app.use(errorHandler);

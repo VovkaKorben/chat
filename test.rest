@@ -2,6 +2,14 @@
 GET http://localhost:3000/api/health HTTP/1.1
 content-type: application/json
 
-###
+### create room
+POST http://localhost:3000/api/rooms HTTP/1.1
+content-type: application/json
+
+{
+   "name": "rrr" 
+}
+
+### read rooms
 GET http://localhost:3000/api/rooms HTTP/1.1
 content-type: application/json
