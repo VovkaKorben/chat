@@ -21,7 +21,7 @@ You need a `.env` file in your server directory with the following variables:
    npm install
    ```
 2. **Create .env file**
-    MONGODB_URI=mongodb+srv://<user>:<password>@skynet.plmo5hs.mongodb.net/?appName=Skynet
+    MONGODB_URI=mongodb+srv://**USERNAME**:**PASSWORD**@skynet.plmo5hs.mongodb.net/?appName=Skynet
 
 3. **Start the Server**:
    Ensure MongoDB is running, then start the API:
