@@ -21,7 +21,7 @@ You need a `.env` file in your server directory with the following variables:
    npm install
    ```
 2. **Create .env file**
-   ```
+   ```bash
    MONGODB_URI=mongodb+srv://**USERNAME**:**PASSWORD**@skynet.plmo5hs.mongodb.net/?appName=Skynet
    ```
 
